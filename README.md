@@ -60,6 +60,8 @@ driver-drowsiness-monitor/
 │
 └── templates/
     └── index.html              # The frontend web interface
+``` 
+
 🚀 How to Use This Project
 Because this project relies on a large pre-trained machine learning model (~97 MB), the model file is not hosted directly in this repository. Follow these steps to set up and run the application locally:
 
