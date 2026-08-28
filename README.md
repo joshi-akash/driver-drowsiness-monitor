@@ -60,3 +60,43 @@ driver-drowsiness-monitor/
 │
 └── templates/
     └── index.html              # The frontend web interface
+🚀 How to Use This Project
+Because this project relies on a large pre-trained machine learning model (~97 MB), the model file is not hosted directly in this repository. Follow these steps to set up and run the application locally:
+
+Step 1: Clone the Repository
+Bash
+git clone [https://github.com/joshi-akash/driver-drowsiness-monitor.git](https://github.com/joshi-akash/driver-drowsiness-monitor.git)
+cd driver-drowsiness-monitor
+Step 2: Set Up Virtual Environment & Dependencies
+Bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+# Install requirements
+pip install -r requirements.txt
+Step 3: Download the Pre-trained Landmark Model
+Download the required model file: shape_predictor_68_face_landmarks.dat.bz2
+
+Extract the .bz2 archive using 7-Zip or WinRAR.
+
+Place the extracted shape_predictor_68_face_landmarks.dat file directly in the root folder alongside app.py.
+
+Step 4: Run the Application
+Bash
+python app.py
+Step 5: Open in Browser
+Navigate to http://127.0.0.1:5000/ in your browser and grant permission to access the webcam.
+
+🔮 Future Enhancements
+Audio Alarms: Web Audio API integration for loud sound warnings when drowsiness is detected.
+
+Yawn Detection: Measuring Mouth Aspect Ratio (MAR) to detect yawning before micro-sleep occurs.
+
+Head Pose Estimation: Tracking head drop or side-to-side distraction.
+
+👨‍💻 Author
+Akash Joshi
+
+📄 License
+This project is open-source under the MIT License.
