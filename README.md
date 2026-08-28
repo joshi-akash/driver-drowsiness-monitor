@@ -7,8 +7,6 @@
 
 A full-stack, web-based computer vision application designed to prevent fatigue-induced accidents by monitoring driver alertness in real-time. 
 
-![Demo GIF Placeholder](https://via.placeholder.com/800x400?text=Replace+this+image+with+a+demo.gif+of+your+app+working)
-*(Note: Replace the placeholder image above with a `demo.gif` showing the app detecting drowsiness)*
 
 ---
 
