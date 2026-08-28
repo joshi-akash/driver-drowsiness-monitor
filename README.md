@@ -2,12 +2,13 @@
 
 # 🚗 Real-Time Driver Drowsiness Detection System 💤
 
-**A lightweight, full-stack computer vision web application for monitoring driver fatigue and preventing micro-sleep accidents in real time.**
+**A lightweight, full-stack computer vision web application for monitoring driver fatigue and preventing micro-sleep accidents in real time using visual overlay and audio buzzer alerts.**
 
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-REST%20API-000000?style=for-the-badge&logo=flask&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/OpenCV-CV2-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white)
 ![dlib](https://img.shields.io/badge/dlib-Facial%20Landmarks-orange?style=for-the-badge)
+![HTML5 Audio](https://img.shields.io/badge/HTML5-Audio%20API-E34F26?style=for-the-badge&logo=html5&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)
 
 </div>
@@ -37,14 +38,15 @@ Micro-sleeps are particularly dangerous because:
 - They frequently occur with the eyes **partially open or fully closed** for very brief intervals, making them nearly impossible for the driver to notice in themselves.
 - At highway speeds, even a **1–2 second** lapse translates to the vehicle traveling the length of a football field with no active control input.
 - Traditional countermeasures (rolling down a window, loud music, caffeine) treat symptoms of alertness rather than measuring the physiological signal directly.
+- Visual-only warnings are easy to miss — a driver whose eyes are already closed cannot see a screen alert.
 
 ### The Solution
 
 This project implements a **non-intrusive, hardware-agnostic** fatigue monitoring system that runs entirely through a web browser:
 
 - No specialized IR cameras, wearables, or in-cabin dedicated hardware — only a **standard webcam**.
-- Continuous, real-time analysis of **facial landmarks** to compute eye closure state.
-- A responsive web dashboard that streams live video, overlays detection metrics, and raises an active alert the moment drowsy behavior is detected — buying the driver critical seconds to react before a micro-sleep event occurs.
+- Continuous, real-time analysis of **facial landmarks** to compute eye closure state via dynamic frame streaming.
+- A responsive web dashboard that streams live video, overlays detection metrics, and — critically — triggers an **immediate audio buzzer (`alarm.wav`)** the moment prolonged eye closure is detected. Because the alert is auditory rather than purely visual, it reaches the driver even when their eyes are closed, buying critical seconds to react before a micro-sleep event turns into a collision.
 
 ---
 
@@ -60,8 +62,9 @@ This project implements a **non-intrusive, hardware-agnostic** fatigue monitorin
 | **Facial Landmark ML** | dlib | Frontal face detection & 68-point landmark prediction |
 | **Numerical Computing** | NumPy | Vectorized EAR calculations & coordinate array handling |
 | **Frontend Markup/Style** | HTML5, CSS3 | Web dashboard structure & styling |
-| **Frontend Logic** | JavaScript (ES6+) | Frame capture, Fetch API calls, Canvas rendering |
+| **Frontend Logic** | JavaScript (ES6+) | Frame capture, Fetch API calls, Canvas rendering, alarm control |
 | **Frontend Capture API** | HTML5 Canvas API | Encoding raw webcam frames to Base64 JPEG |
+| **Frontend Alerting** | HTML5 Audio API | Plays `alarm.wav` buzzer immediately upon `DROWSY` state |
 
 ### `requirements.txt` Breakdown
 
@@ -96,8 +99,9 @@ imutils
 │     frame @ ~7 FPS     │                                   │  3. Grayscale convert  │
 │  3. Encode → Base64    │                                   │  4. dlib face detect   │
 │  4. fetch() POST       │ ◀─────────────────────────────── │  5. 68-pt landmarks    │
-│  5. Render JSON state  │        JSON { state, ear }        │  6. Compute EAR        │
-│     on dashboard        │                                   │  7. Frame-count logic  │
+│  5. Parse JSON state   │      JSON { state, ear }          │  6. Compute EAR        │
+│  6. IF state==DROWSY:  │                                   │  7. Frame-count logic  │
+│     play alarm.wav 🔊  │                                   │  8. Set DROWSY flag    │
 └──────────────────────┘                                    └───────────────────────┘
 ```
 
@@ -112,56 +116,57 @@ The Flask server receives the Base64 payload, strips the data-URI header, and de
 **3. Landmark Extraction**
 The decoded frame is converted to grayscale (reducing computational load for detection). `dlib.get_frontal_face_detector()` locates the bounding box of the driver's face within the frame. Once a face is found, `shape_predictor_68_face_landmarks.dat` — a pretrained ensemble-of-regression-trees model — maps **68 (x, y) landmark coordinates** onto key facial features, including both eyes, eyebrows, nose, mouth, and jawline.
 
-**4. Eye Aspect Ratio (EAR) Calculation**
+**4. Eye Aspect Ratio (EAR) Math & Dual Alarm Trigger**
 
 The six landmark points surrounding each eye (`p1` through `p6`) are used to compute the **Eye Aspect Ratio**, a scale-invariant metric that stays roughly constant while the eye is open and drops sharply toward zero when the eye closes:
 
-$$EAR = \frac{\lVert p_2 - p_6 \rVert + \lVert p_3 - p_5 \rVert}{2\,\lVert p_1 - p_4 \rVert}$$
+$$EAR = \frac{||p_2 - p_6|| + ||p_3 - p_5||}{2\,||p_1 - p_4||}$$
 
 Where the numerator sums the two vertical eye-landmark distances and the denominator is twice the horizontal eye-landmark distance. The EAR is computed independently for both eyes and averaged for stability against partial occlusion or head tilt.
 
 **Detection & Alert Logic:**
 
-| Condition | Resulting State |
-|---|---|
-| EAR ≥ 0.25 | `AWAKE` — counter resets |
-| EAR < 0.25 for < 20 consecutive frames | `MONITORING` — counter increments |
-| EAR < 0.25 for ≥ 20 consecutive frames | `DROWSY` — active alert triggered |
+| Condition | Resulting State | Frontend Action |
+|---|---|---|
+| EAR ≥ 0.25 | `AWAKE` — counter resets | Alarm silenced (if playing) |
+| EAR < 0.25 for < 20 consecutive frames | `MONITORING` — counter increments | No alarm; dashboard shows live EAR |
+| EAR < 0.25 for ≥ 20 consecutive frames | `DROWSY` — active alert triggered | 🔊 **`alarm.wav` plays immediately** |
 
 This consecutive-frame requirement is critical: it filters out normal, voluntary blinking (which typically lasts only 2–4 frames) while reliably catching sustained eye closure indicative of micro-sleep onset.
+
+**Auditory Alert Integration:**
+When the JSON response from `/detect` carries the `DROWSY` flag, the client-side JavaScript immediately triggers playback of the buzzer file located at `static/alarm.wav` using the **HTML5 Audio API** (`new Audio('/static/alarm.wav').play()` or an equivalent pre-instantiated `<audio>` element). The alarm continues looping — or re-triggers on each subsequent `DROWSY` response — until the backend reports the driver has returned to an `AWAKE` state, at which point playback is stopped/reset. This dual-channel approach (visual overlay + audio buzzer) ensures the alert reaches the driver even in the split second their eyes are closed and a purely visual cue would go unseen.
 
 ---
 
 ## 4. Repository Directory Structure
 
-```
+```text
 driver-drowsiness-monitor/
 │
-├── app.py                              # Flask server entrypoint & CV processing logic
-│                                        #   - /detect POST endpoint
-│                                        #   - dlib detector/predictor initialization
-│                                        #   - EAR computation & state machine
-│
-├── requirements.txt                    # Pinned Python package dependencies
-│
-├── shape_predictor_68_face_landmarks.dat   # (Not tracked in git — downloaded manually)
-│
-├── .gitignore                          # Excludes:
-│                                        #   *.dat            (large pretrained model files)
-│                                        #   venv/            (virtual environment)
-│                                        #   __pycache__/     (compiled Python bytecode)
+├── static/
+│   └── alarm.wav               # Audio buzzer played when prolonged drowsiness is detected
 │
 ├── templates/
-│   └── index.html                      # Main web dashboard (video feed + status panel)
+│   └── index.html              # Frontend web interface and webcam logic
 │
-├── static/
-│   ├── css/
-│   │   └── style.css                   # Dashboard styling
-│   └── js/
-│       └── script.js                   # Webcam capture, Canvas encoding, fetch() polling
-│
-└── README.md                           # Project documentation (this file)
+├── .gitignore                  # Git tracking exclusion list
+├── README.md                   # Project documentation
+├── app.py                      # Main Flask application and CV logic
+└── requirements.txt            # Python dependencies
 ```
+
+**File-by-file notes:**
+
+| Path | Role |
+|---|---|
+| `app.py` | Flask server entrypoint; initializes the dlib detector/predictor, exposes the `/detect` POST endpoint, decodes incoming frames, computes EAR, and runs the consecutive-frame state machine |
+| `requirements.txt` | Pinned Python package dependencies for reproducible installs |
+| `templates/index.html` | Web dashboard markup; contains the `<video>`/`<canvas>` capture logic, `fetch()` polling loop, live EAR/status display, and the `<audio>` element wired to `alarm.wav` |
+| `static/alarm.wav` | The buzzer sound asset played client-side via the HTML5 Audio API upon a `DROWSY` response |
+| `.gitignore` | Excludes `shape_predictor_68_face_landmarks.dat` (large pretrained model), `venv/`, and `__pycache__/` from version control |
+
+> **Note:** The 68-point landmark model file (`shape_predictor_68_face_landmarks.dat`, ~97 MB) is intentionally **not** checked into the repository and must be downloaded manually — see [Step 3](#step-3--download-the-facial-landmark-model) below.
 
 ---
 
@@ -227,17 +232,18 @@ Navigate to:
 http://127.0.0.1:5000/
 ```
 
-Grant webcam permissions when prompted by your browser. The dashboard will begin streaming your video feed and displaying live EAR values and drowsiness state.
+Grant webcam permissions when prompted by your browser. Most browsers also require a **user interaction (e.g., a click)** before allowing audio autoplay — the dashboard's "Start Monitoring" button satisfies this requirement so the `alarm.wav` buzzer is guaranteed to be audible once triggered. The dashboard will begin streaming your video feed and displaying live EAR values and drowsiness state.
 
 ---
 
 ## 6. Future Enhancements & Roadmap
 
-- [ ] **Auditory Alerts** — Integrate the Web Audio API to trigger a real-time buzzer/alarm sound directly in the browser when the `DROWSY` state is reached, rather than relying solely on visual cues.
+- [ ] **Adjustable Alarm Volume/Tone** — Allow the driver to customize the buzzer sound or volume from the dashboard settings panel.
 - [ ] **Yawn Detection** — Extend the landmark analysis with a **Mouth Aspect Ratio (MAR)** metric to detect prolonged yawning as an additional fatigue signal.
 - [ ] **Head Pose Estimation** — Add 3D head pose tracking to detect driver distraction (e.g., looking away from the road) as a complementary safety signal alongside eye-closure monitoring.
 - [ ] Mobile-responsive dashboard for in-vehicle tablet/phone mounts.
 - [ ] Configurable EAR threshold and frame-count sensitivity via the UI.
+- [ ] Escalating alarm pattern (progressively louder/faster buzzer) for sustained drowsiness events.
 
 ---
 
