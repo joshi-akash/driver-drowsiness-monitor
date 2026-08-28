@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Drowsiness Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .alert-pulse {
+            animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans">
+
+    <div class="container mx-auto p-4 min-h-screen flex flex-col items-center justify-center">
+        <h1 class="text-4xl font-bold mb-6 text-center">Driver Drowsiness Monitor</h1>
+
+        <div class="w-full max-w-2xl bg-gray-800 rounded-lg shadow-2xl overflow-hidden relative">
+            <video id="video" width="640" height="480" autoplay muted playsinline class="w-full h-auto transform -scale-x-100"></video>
+            <canvas id="canvas" width="640" height="480" class="hidden"></canvas>
+            <audio id="alarm-sound" src="/static/alarm.wav" preload="auto" loop></audio>
+
+            <div id="status-overlay" class="absolute top-4 left-4 p-4 rounded-lg transition-all duration-300 bg-gray-700 bg-opacity-80">
+                <p class="text-3xl font-extrabold" id="status-text">Ready</p>
+                <p class="text-lg" id="ear-text">EAR: --</p>
+            </div>
+        </div>
+
+        <button id="start-button" class="mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg text-xl shadow-lg transition-all">
+            Start Monitoring
+        </button>
+
+        <p class="mt-4 text-gray-400" id="info-text">Click "Start Monitoring" to begin.</p>
+    </div>
+
+    <script>
+        // --- 1. Get Elements ---
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const statusText = document.getElementById('status-text');
+        const earText = document.getElementById('ear-text');
+        const statusOverlay = document.getElementById('status-overlay');
+        const infoText = document.getElementById('info-text');
+        const alarm = document.getElementById('alarm-sound');
+        
+        // --- THIS IS THE FIX ---
+        const startButton = document.getElementById('start-button');
+        // ---
+
+        // --- 2. API URL ---
+        const API_URL = 'http://127.0.0.1:5000/detect';
+
+        // --- 3. Start Camera Function ---
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                video.addEventListener('loadedmetadata', () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    infoText.textContent = "Monitoring... Your video is processed by the server.";
+                    statusText.textContent = "Status: AWAKE";
+                    statusOverlay.classList.remove('bg-gray-700');
+                    statusOverlay.classList.add('bg-green-500');
+                    
+                    // Start sending frames
+                    setInterval(sendFrame, 150); 
+                });
+            } catch (err) {
+                console.error("Error accessing webcam: ", err);
+                statusText.textContent = "Webcam Error";
+                infoText.textContent = "Could not access webcam. Please check permissions.";
+                statusOverlay.classList.add('bg-red-600');
+            }
+        }
+
+        // --- 4. Send Frame Function (No changes here) ---
+        async function sendFrame() {
+            if (video.readyState < video.HAVE_CURRENT_DATA) return;
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataURL = canvas.toDataURL('image/jpeg', 0.8); 
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: dataURL }),
+                });
+                if (!response.ok) throw new Error(`Server error: ${response.statusText}`);
+                const data = await response.json();
+                updateUI(data.status, data.ear);
+            } catch (err) {
+                console.error("Error sending frame: ", err);
+                updateUI("error", 0);
+            }
+        }
+
+        // --- 5. Update UI Function (No changes here) ---
+        function updateUI(status, ear) {
+            statusText.textContent = `Status: ${status.toUpperCase()}`;
+            earText.textContent = `EAR: ${ear.toFixed(3)}`;
+            statusOverlay.classList.remove('bg-green-500', 'bg-red-600', 'alert-pulse', 'bg-gray-700');
+
+            if (status === 'drowsy') {
+                statusOverlay.classList.add('bg-red-600', 'alert-pulse');
+                if (alarm.paused) {
+                    // This will no longer be blocked because the user clicked the button
+                    alarm.play().catch(e => console.warn("Audio play error: ", e));
+                }
+            } else if (status === 'awake') {
+                statusOverlay.classList.add('bg-green-500');
+                if (!alarm.paused) {
+                    alarm.pause();
+                    alarm.currentTime = 0;
+                }
+            } else {
+                statusOverlay.classList.add('bg-gray-700');
+                if (status === 'error') statusText.textContent = 'Server Error';
+            }
+        }
+
+        // --- 6. Start the application ---
+        // We DO NOT call startCamera() on load anymore.
+        // We wait for the button click.
+
+        startButton.addEventListener('click', () => {
+            // Hide the button
+            startButton.style.display = 'none';
+            infoText.textContent = "Initializing webcam...";
+            
+            // Now we can safely start the camera.
+            // This click has given us audio permission.
+            startCamera();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Ignore the massive machine learning model
+*.dat
+
+# Ignore temporary code runner files
+tempCodeRunnerFile.py
+
+# Ignore Python cache and virtual environments
+__pycache__/
+venv/
+env/
